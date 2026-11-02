@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Document Intelligence Platform</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; }
+    body { background: #f4f6f8; color: #17202a; margin: 0; }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
+    h1 { margin-bottom: 6px; }
+    .muted { color: #68737d; }
+    .card { background: white; border: 1px solid #dfe4e8; border-radius: 10px; padding: 20px; margin-top: 20px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    select, button { border: 1px solid #aeb8c2; border-radius: 6px; font: inherit; padding: 9px 12px; }
+    button { background: #1769aa; color: white; cursor: pointer; }
+    button:disabled { background: #9aa5ae; cursor: wait; }
+    .row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+    .field { min-width: 240px; flex: 1; }
+    .document { border-top: 1px solid #edf0f2; padding: 10px 0; display: flex; justify-content: space-between; }
+    .status-match { color: #18794e; font-weight: 700; }
+    .status-mismatch { color: #b42318; font-weight: 700; }
+    .error { color: #b42318; }
+    ul { padding-left: 20px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Document Intelligence Platform</h1>
+  <p class="muted">Phase 1 invoice and purchase-order review</p>
+
+  <section class="card">
+    <div class="row">
+      <div class="field">
+        <label for="user">User workspace</label>
+        <select id="user"></select>
+      </div>
+      <button id="load">Load documents</button>
+    </div>
+    <div id="documents"></div>
+  </section>
+
+  <section class="card">
+    <h2>Review an invoice</h2>
+    <div class="row">
+      <div class="field">
+        <label for="invoice">Invoice</label>
+        <select id="invoice"></select>
+      </div>
+      <div class="field">
+        <label for="purchase-order">Purchase order</label>
+        <select id="purchase-order"></select>
+      </div>
+      <button id="review">Compare</button>
+    </div>
+    <div id="result"></div>
+  </section>
+</main>
+<script>
+  const user = document.querySelector("#user");
+  const invoice = document.querySelector("#invoice");
+  const purchaseOrder = document.querySelector("#purchase-order");
+  const documents = document.querySelector("#documents");
+  const result = document.querySelector("#result");
+
+  async function request(url, options) {
+    const response = await fetch(url, options);
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || "Request failed");
+    return body;
+  }
+
+  function option(select, value, label = value) {
+    select.insertAdjacentHTML("beforeend", `<option value="${value}">${label}</option>`);
+  }
+
+  async function loadDocuments() {
+    documents.textContent = "Loading...";
+    result.textContent = "";
+    invoice.replaceChildren();
+    purchaseOrder.replaceChildren();
+    try {
+      const items = await request(`/api/users/${user.value}/documents`);
+      documents.innerHTML = items.map(item =>
+        `<div class="document"><span>${item.filename}</span><span>${item.document_type}</span></div>`
+      ).join("");
+      items.filter(item => item.document_type === "invoice")
+        .forEach(item => option(invoice, item.filename));
+      items.filter(item => item.document_type === "purchase_order")
+        .forEach(item => option(purchaseOrder, item.filename));
+    } catch (error) {
+      documents.innerHTML = `<p class="error">${error.message}</p>`;
+    }
+  }
+
+  async function showReview() {
+    result.textContent = "Comparing...";
+    try {
+      const review = await request(`/api/users/${user.value}/review`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          invoice_filename: invoice.value,
+          purchase_order_filename: purchaseOrder.value
+        })
+      });
+      const statusClass = review.status === "match" ? "status-match" : "status-mismatch";
+      result.innerHTML = `
+        <h3 class="${statusClass}">${review.status.toUpperCase()}</h3>
+        <p>Invoice: <strong>${review.invoice_number}</strong></p>
+        <p>Purchase order: <strong>${review.purchase_order_number}</strong></p>
+        <p>Total difference: <strong>${review.total_difference}</strong></p>
+        <h4>Issues</h4>
+        <ul>${review.issues.length
+          ? review.issues.map(issue => `<li>${issue.message}</li>`).join("")
+          : "<li>No issues found.</li>"}</ul>
+        <h4>Duplicate invoices</h4>
+        <ul>${review.duplicate_invoices.length
+          ? review.duplicate_invoices.map(item => `<li>${item.filenames.join(", ")}</li>`).join("")
+          : "<li>No duplicates found.</li>"}</ul>`;
+    } catch (error) {
+      result.innerHTML = `<p class="error">${error.message}</p>`;
+    }
+  }
+
+  document.querySelector("#load").addEventListener("click", loadDocuments);
+  document.querySelector("#review").addEventListener("click", showReview);
+  request("/api/users").then(users => {
+    users.forEach(item => option(user, item.user_id, `${item.display_name} (${item.user_id})`));
+    loadDocuments();
+  });
+</script>
+</body>
+</html>

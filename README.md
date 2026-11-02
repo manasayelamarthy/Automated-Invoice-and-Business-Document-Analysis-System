@@ -32,6 +32,23 @@ Compare an invoice with its purchase order:
 python -m app.documents.cli compare user_001 invoice_inv_1002.txt po_2002.txt
 ```
 
+## Run the Phase 1 browser platform
+
+Install the project dependencies:
+
+```powershell
+pip install -e .
+```
+
+Start the web server:
+
+```powershell
+uvicorn app.web:app --reload
+```
+
+Open `http://127.0.0.1:8000` in a browser. Select a user workspace, inspect
+its documents, and compare an invoice with a purchase order.
+
 Synthetic data is stored under `data/`. The `data/fixtures/` directory is the
 shared test reference, while `data/users/user_001`, `data/users/user_002`, and
 `data/users/user_003` represent isolated user workspaces.
